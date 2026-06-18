@@ -13,6 +13,13 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
+
+# ── Install PyTorch CPU-only FIRST ───────────────────────────
+# Prevents sentence-transformers from pulling 2.5GB CUDA version.
+# Ingestion only needs CPU for embedding — no GPU required.
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
+# ── Install remaining dependencies ───────────────────────────
 RUN pip install --no-cache-dir -r requirements.txt
 
 RUN python -c "from sentence_transformers import SentenceTransformer; \
