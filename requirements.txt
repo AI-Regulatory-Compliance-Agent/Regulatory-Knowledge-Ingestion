@@ -1,7 +1,10 @@
-pymupdf==1.24.1
-sentence-transformers==2.7.0
-qdrant-client==1.9.1
-langchain-text-splitters==0.2.1
-requests==2.31.0
-tqdm==4.66.4
+pymupdf==1.24.5
+sentence-transformers==3.0.1
+qdrant-client==1.10.1
+langchain-text-splitters==0.3.0
+requests==2.32.3
+tqdm==4.66.5
 python-dotenv==1.0.1
+pytesseract==0.3.13
+Pillow==10.4.0
+langdetect==1.0.9
