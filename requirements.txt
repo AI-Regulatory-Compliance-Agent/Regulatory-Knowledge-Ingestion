@@ -4,7 +4,7 @@ qdrant-client==1.10.1
 langchain-text-splitters==0.3.0
 requests==2.32.3
 tqdm==4.66.5
-python-dotenv==1.0.1
+python-dotenv==1.2.2
 pytesseract==0.3.13
 Pillow==10.4.0
 langdetect==1.0.9
