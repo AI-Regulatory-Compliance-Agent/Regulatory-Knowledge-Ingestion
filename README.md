@@ -1,4 +1,4 @@
-# 📄 ComplianceAI — Ingestion Pipeline
+# 📄 ComplianceAI - Ingestion Pipeline
 
 > One-shot document processing pipeline that converts government regulation PDFs into searchable vector embeddings stored in Qdrant. Handles downloading, text extraction (with OCR fallback), chunking, embedding, and vector storage.
 
