@@ -1,5 +1,7 @@
 import os
 import uuid
+import time
+import requests
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
     Distance,
@@ -18,6 +20,21 @@ QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", 6333))
 COLLECTION_NAME = os.getenv("QDRANT_COLLECTION", "regulations")
 VECTOR_SIZE = 384  # all-MiniLM-L6-v2 output dimension
+
+
+def wait_for_qdrant(retries: int = 10, delay: int = 3):
+    url = f"http://{QDRANT_HOST}:{QDRANT_PORT}/healthz"
+    for attempt in range(1, retries + 1):
+        try:
+            response = requests.get(url, timeout=3)
+            if response.status_code == 200:
+                print(f"✅ Qdrant is ready (attempt {attempt})")
+                return
+        except Exception:
+            pass
+        print(f"⏳ Waiting for Qdrant... attempt {attempt}/{retries}")
+        time.sleep(delay)
+    raise RuntimeError("❌ Qdrant did not become ready in time")
 
 
 def get_qdrant_client() -> QdrantClient:
@@ -84,6 +101,10 @@ def run():
     print("=" * 50)
     print("  AI Regulatory Compliance — Ingestion Pipeline")
     print("=" * 50)
+
+    # Wait for Qdrant to be ready before doing anything
+    print("\n[0/5] Waiting for Qdrant...")
+    wait_for_qdrant()
 
     # Step 1 — Download (skips if no URLs configured)
     print("\n[1/5] Downloading PDFs...")

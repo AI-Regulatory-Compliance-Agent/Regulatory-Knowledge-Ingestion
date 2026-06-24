@@ -1,7 +1,7 @@
 import os
 import json
 import requests
-from datetime import datetime
+from datetime import datetime, timezone
 from tqdm import tqdm
 from dotenv import load_dotenv
 
@@ -57,7 +57,7 @@ def download_all():
             manifest[name] = {
                 "filename": filename,
                 "source_url": url,
-                "downloaded_at": datetime.utcnow().isoformat(),
+                "downloaded_at": datetime.now(timezone.utc).isoformat(),
                 "file_size_kb": file_size_kb
             }
 

@@ -1,6 +1,7 @@
 import os
 import re
 import io
+import unicodedata
 import fitz                  # PyMuPDF  — native PDF text extraction + page rendering
 import pytesseract           # OCR engine wrapper (calls Tesseract under the hood)
 from PIL import Image        # Pillow  — converts raw pixmap bytes into an image object
@@ -45,10 +46,12 @@ def clean_text(text: str) -> str:
     # re.MULTILINE  →  ^ and $ match start/end of each line, not the whole string
     text = re.sub(r"^\s*\d+\s*$", "", text, flags=re.MULTILINE)
 
-    # Drop every character outside the printable ASCII range (0x20–0x7E)
-    # encode("ascii", errors="ignore")  →  silently discards non-ASCII bytes
-    # .decode("ascii")                  →  turns the bytes back into a string
-    text = text.encode("ascii", errors="ignore").decode("ascii")
+    # Remove control characters but keep all printable Unicode
+    # (preserves ₹, §, Hindi text, etc. — critical for Indian regulations)
+    text = ''.join(
+        c for c in text
+        if not unicodedata.category(c).startswith('C') or c in '\n\r\t'
+    )
 
     # Collapse runs of spaces or tabs into a single space
     # [ \t]+  →  one or more spaces OR tabs
@@ -165,7 +168,7 @@ def extract_pdf(
     output_path: str,
     regulation_name: str,
     skip_non_english: bool = True,
-) -> tuple[int, int, int]:
+) -> tuple[int, int, int, int]:
     # fitz.open()  →  loads the PDF into memory; returns a Document object
     doc = fitz.open(pdf_path)
 

@@ -27,4 +27,7 @@ RUN python -c "from sentence_transformers import SentenceTransformer; \
 
 COPY . .
 
+ENV TRANSFORMERS_OFFLINE=1
+ENV HF_HUB_OFFLINE=1
+
 CMD ["python", "ingestor.py"]
