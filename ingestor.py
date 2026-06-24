@@ -6,7 +6,10 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import (
     Distance,
     VectorParams,
-    PointStruct
+    PointStruct,
+    SparseVectorParams,
+    SparseIndexParams,
+    SparseVector,
 )
 from dotenv import load_dotenv
 from downloader import download_all
@@ -44,23 +47,63 @@ def get_qdrant_client() -> QdrantClient:
 
 
 def create_collection(client: QdrantClient):
+    """
+    Create the regulations collection with named vectors config for hybrid search.
+
+    Vectors:
+      - "dense": 384-dim cosine similarity (SentenceTransformer all-MiniLM-L6-v2)
+      - "sparse": BM25-style keyword matching (hash-based token IDs)
+
+    If the collection exists with OLD (unnamed) vector config, it is deleted
+    and recreated with the new named vector schema. This is necessary because
+    Qdrant does not support migrating from unnamed to named vectors in place.
+    """
     existing = [c.name for c in client.get_collections().collections]
 
     if COLLECTION_NAME in existing:
-        print(f"⏭  Collection '{COLLECTION_NAME}' already exists, skipping creation")
-        return
+        # Check if the collection uses the new named vector config
+        collection_info = client.get_collection(COLLECTION_NAME)
+        vectors_config = collection_info.config.params.vectors
+
+        # If vectors_config is a VectorParams (unnamed), migration needed
+        if isinstance(vectors_config, VectorParams):
+            print(f"⚠️  Collection '{COLLECTION_NAME}' has old (unnamed) vector config")
+            print(f"   Deleting and recreating with named vectors for hybrid search...")
+            client.delete_collection(COLLECTION_NAME)
+        elif isinstance(vectors_config, dict) and "dense" in vectors_config:
+            print(f"⏭  Collection '{COLLECTION_NAME}' already has named vector config, skipping creation")
+            return
+        else:
+            # Unknown config format — recreate to be safe
+            print(f"⚠️  Collection '{COLLECTION_NAME}' has unexpected config, recreating...")
+            client.delete_collection(COLLECTION_NAME)
 
     client.create_collection(
         collection_name=COLLECTION_NAME,
-        vectors_config=VectorParams(
-            size=VECTOR_SIZE,
-            distance=Distance.COSINE
-        )
+        vectors_config={
+            "dense": VectorParams(
+                size=VECTOR_SIZE,
+                distance=Distance.COSINE
+            )
+        },
+        sparse_vectors_config={
+            "sparse": SparseVectorParams(
+                index=SparseIndexParams(on_disk=False)
+            )
+        }
     )
-    print(f"✅ Collection '{COLLECTION_NAME}' created")
+    print(f"✅ Collection '{COLLECTION_NAME}' created (dense + sparse vectors)")
 
 
 def store_chunks(client: QdrantClient, embedded_chunks: dict[str, list[dict]]):
+    """
+    Store embedded chunks in Qdrant with both dense and sparse vectors.
+
+    Each point has:
+      - Named vector "dense": 384-dim embedding from SentenceTransformer
+      - Named sparse vector "sparse": BM25-style token weights
+      - Payload: chunk_id, regulation_name, source_file, page_number, text, token_count
+    """
     total_stored = 0
 
     for regulation_name, chunks in embedded_chunks.items():
@@ -68,16 +111,27 @@ def store_chunks(client: QdrantClient, embedded_chunks: dict[str, list[dict]]):
 
         points = []
         for chunk in chunks:
+            # Build sparse vector if available
+            sparse_vectors = {}
+            if chunk.get("sparse_indices"):
+                sparse_vectors["sparse"] = SparseVector(
+                    indices=chunk["sparse_indices"],
+                    values=chunk["sparse_values"]
+                )
+
             point = PointStruct(
                 id=str(uuid.uuid4()),
-                vector=chunk["vector"],
+                vector={
+                    "dense": chunk["vector"],
+                },
                 payload={
                     "chunk_id": chunk["chunk_id"],
                     "regulation_name": chunk["regulation_name"],
                     "source_file": chunk["source_file"],
                     "page_number": chunk["page_number"],
                     "text": chunk["text"],
-                    "token_count": chunk["token_count"]
+                    "token_count": chunk["token_count"],
+                    "source_type": "regulation",
                 }
             )
             points.append(point)
@@ -92,7 +146,7 @@ def store_chunks(client: QdrantClient, embedded_chunks: dict[str, list[dict]]):
             )
 
         total_stored += len(chunks)
-        print(f"✅ {regulation_name} → stored {len(chunks)} chunks")
+        print(f"✅ {regulation_name} → stored {len(chunks)} chunks (dense + sparse)")
 
     return total_stored
 
@@ -100,6 +154,7 @@ def store_chunks(client: QdrantClient, embedded_chunks: dict[str, list[dict]]):
 def run():
     print("=" * 50)
     print("  AI Regulatory Compliance — Ingestion Pipeline")
+    print("  (Hybrid Search: Dense + Sparse Vectors)")
     print("=" * 50)
 
     # Wait for Qdrant to be ready before doing anything
@@ -118,8 +173,8 @@ def run():
     print("\n[3/5] Chunking extracted text...")
     chunk_all()
 
-    # Step 4 — Embed chunks
-    print("\n[4/5] Embedding chunks...")
+    # Step 4 — Embed chunks (dense + sparse)
+    print("\n[4/5] Embedding chunks (dense + sparse vectors)...")
     model = load_model()
     embedded_chunks = embed_all(model)
 
@@ -127,15 +182,17 @@ def run():
         print("❌ No chunks to store. Exiting.")
         return
 
-    # Step 5 — Store in Qdrant
-    print("\n[5/5] Storing in Qdrant...")
+    # Step 5 — Store in Qdrant (with named vectors)
+    print("\n[5/5] Storing in Qdrant (hybrid: dense + sparse)...")
     client = get_qdrant_client()
     create_collection(client)
     total = store_chunks(client, embedded_chunks)
 
     print("\n" + "=" * 50)
     print(f"✅ Ingestion complete — {total} chunks stored in Qdrant")
-    print(f"   Collection: '{COLLECTION_NAME}'")
+    print(f"   Collection: '{COLLECTION_NAME}' (hybrid search enabled)")
+    print(f"   Dense vectors: {VECTOR_SIZE}-dim cosine similarity")
+    print(f"   Sparse vectors: BM25-style keyword matching")
     print(f"   Dashboard:  http://localhost:6333/dashboard")
     print("=" * 50)
 
