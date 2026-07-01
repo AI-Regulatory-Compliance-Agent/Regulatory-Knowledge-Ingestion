@@ -21,15 +21,22 @@ load_dotenv()
 
 QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", 6333))
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", "")
 COLLECTION_NAME = os.getenv("QDRANT_COLLECTION", "regulations")
 VECTOR_SIZE = 384  # all-MiniLM-L6-v2 output dimension
 
 
 def wait_for_qdrant(retries: int = 10, delay: int = 3):
-    url = f"http://{QDRANT_HOST}:{QDRANT_PORT}/healthz"
+    # Cloud URL already includes https://, local uses http://
+    if QDRANT_HOST.startswith("http"):
+        url = f"{QDRANT_HOST}/healthz"
+    else:
+        url = f"http://{QDRANT_HOST}:{QDRANT_PORT}/healthz"
+
+    headers = {"api-key": QDRANT_API_KEY} if QDRANT_API_KEY else {}
     for attempt in range(1, retries + 1):
         try:
-            response = requests.get(url, timeout=3)
+            response = requests.get(url, headers=headers, timeout=5)
             if response.status_code == 200:
                 print(f"✅ Qdrant is ready (attempt {attempt})")
                 return
@@ -41,8 +48,14 @@ def wait_for_qdrant(retries: int = 10, delay: int = 3):
 
 
 def get_qdrant_client() -> QdrantClient:
-    client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
-    print(f"✅ Connected to Qdrant at {QDRANT_HOST}:{QDRANT_PORT}")
+    if QDRANT_HOST.startswith("http"):
+        # Cloud mode — use URL directly with API key
+        client = QdrantClient(url=QDRANT_HOST, api_key=QDRANT_API_KEY)
+        print(f"✅ Connected to Qdrant Cloud at {QDRANT_HOST}")
+    else:
+        # Local mode — use host:port (no API key needed)
+        client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+        print(f"✅ Connected to Qdrant at {QDRANT_HOST}:{QDRANT_PORT}")
     return client
 
 
@@ -193,7 +206,7 @@ def run():
     print(f"   Collection: '{COLLECTION_NAME}' (hybrid search enabled)")
     print(f"   Dense vectors: {VECTOR_SIZE}-dim cosine similarity")
     print(f"   Sparse vectors: BM25-style keyword matching")
-    print(f"   Dashboard:  http://localhost:6333/dashboard")
+    print(f"   Cloud Dashboard: {QDRANT_HOST}/dashboard")
     print("=" * 50)
 
 
